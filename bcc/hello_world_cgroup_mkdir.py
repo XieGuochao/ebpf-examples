@@ -8,9 +8,9 @@
 
 from bcc import BPF
 
-program = """
+program = r"""
 int kprobe__cgroup_mkdir(void *ctx) {
-    bpf_trace_printk("hello world\\n");
+    bpf_trace_printk("hello world\n");
     return 0;
 }
 """
