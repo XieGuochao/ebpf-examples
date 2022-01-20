@@ -12,11 +12,12 @@ program = r"""
 #include <uapi/linux/ptrace.h>
 #include <linux/kernfs.h>
 
-BPF_HASH(start, struct kernfs_node *);
+BPF_HASH(start, u32);
 
-int trace_start(struct pt_regs *ctx, struct kernfs_node *parent_kn, const char *name, umode_t mode) {
+int trace_start(struct pt_regs *ctx) {
     u64 ts = bpf_ktime_get_ns();
-    start.update(&parent_kn, &ts);
+    u32 pid = bpf_get_current_pid_tgid();
+    start.update(&pid, &ts);
 
     return 0;
 }
@@ -24,12 +25,13 @@ int trace_start(struct pt_regs *ctx, struct kernfs_node *parent_kn, const char *
 int trace_completion(struct pt_regs *ctx, struct kernfs_node *parent_kn) {
     u64 *tsp, delta;
     u64 ts = bpf_ktime_get_ns();
+    u32 pid = bpf_get_current_pid_tgid();
 
-    tsp = start.lookup(&parent_kn);
+    tsp = start.lookup(&pid);
     if (tsp != 0) {
         delta = bpf_ktime_get_ns() - *tsp;
         bpf_trace_printk("%d\n", delta);
-        start.delete(&parent_kn);
+        start.delete(&pid);
     }
     return 0;
 }
@@ -37,7 +39,7 @@ int trace_completion(struct pt_regs *ctx, struct kernfs_node *parent_kn) {
 
 b = BPF(text=program)
 b.attach_kprobe(event=b"cgroup_mkdir", fn_name="trace_start")
-b.attach_kprobe(event=b"kernfs_unbreak_active_protection", fn_name="trace_completion")
+b.attach_kretprobe(event=b"cgroup_mkdir", fn_name="trace_completion")
 
 start = 0
 while 1:
